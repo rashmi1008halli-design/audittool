@@ -1,0 +1,7 @@
+Flask==2.3.2
+flask-socketio
+eventlet
+gunicorn
+boto3>=1.30.0,<1.35
+pandas==2.3.3
+reportlab

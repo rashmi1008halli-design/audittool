@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Security Audit Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(to right, #e3f2fd, #e8f5e9);
+            text-align: center;
+            padding: 30px;
+        }
+        h1 {
+            color: #1565c0;
+        }
+        button {
+            background-color: #1565c0;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0d47a1;
+        }
+        #scan-progress {
+            margin: 20px auto;
+            width: 60%;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 0 5px #bbb;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        #score-container {
+            margin: 30px auto;
+            width: 300px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>☁️ Cloud Security Audit Tool</h1>
+
+    <!-- Run Scan Button -->
+    <button id="scan-btn">🚀 Run Cloud Scan</button>
+
+    <!-- Real-time progress area -->
+    <div id="scan-progress"></div>
+
+    <!-- Score chart -->
+    <div id="score-container">
+        <canvas id="scoreChart"></canvas>
+    </div>
+
+    <script>
+        const socket = io();
+        const logDiv = document.getElementById('scan-progress');
+        const scanBtn = document.getElementById('scan-btn');
+        let chartInstance = null;
+
+        // Show scan progress from backend
+        socket.on('scan_progress', data => {
+            logDiv.innerHTML += `<p>${data.message}</p>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        });
+
+        // Show final score
+        socket.on('scan_complete', data => {
+            logDiv.innerHTML += `<p>✅ Scan complete!</p>`;
+            showScore(data.score);
+        });
+
+        // When Run Scan is clicked
+        scanBtn.onclick = () => {
+            logDiv.innerHTML = "<p>🔍 Starting scan...</p>";
+            if (chartInstance) chartInstance.destroy(); // Reset chart
+            socket.emit("start_scan");
+        };
+
+        // Draw score chart
+        function showScore(score) {
+            const ctx = document.getElementById('scoreChart');
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Score', 'Remaining'],
+                    datasets: [{
+                        data: [score, 100 - score],
+                        backgroundColor: ['#4CAF50', '#ddd']
+                    }]
+                },
+                options: {
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
