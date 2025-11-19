@@ -1,0 +1,62 @@
+import csv
+import os
+
+def log_scan(results, score, filename="scan_log.csv"):
+    """
+    Logs scan results and score to a CSV file.
+    
+    :param results: dict or list of scan results
+    :param score: int or float, security score
+    :param filename: str, CSV file name
+    """
+    # Ensure file exists and write header if new
+    file_exists = os.path.isfile(filename)
+    
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        if not file_exists:
+            writer.writerow(["Result", "Score"])  # Header row
+        # Convert results dict to string if needed
+        writer.writerow([str(results), score])
+    
+    print(f"Scan results logged to {filename}")
+Score: 70
+public_buckets: []
+root_mfa: False
+open_sgs: []
+----------------------------------------
+Score: 70
+public_buckets: []
+root_mfa: False
+open_sgs: []
+----------------------------------------
+Score: 70
+public_buckets: []
+root_mfa: False
+open_sgs: []
+----------------------------------------
+Score: 70
+public_buckets: []
+root_mfa: False
+open_sgs: []
+----------------------------------------
+Score: 70
+public_buckets: []
+root_mfa: False
+open_sgs: []
+----------------------------------------
+Score: 70
+public_buckets: []
+root_mfa: False
+open_sgs: []
+----------------------------------------
+Score: 70
+public_buckets: []
+root_mfa: False
+open_sgs: []
+----------------------------------------
+Score: 70
+public_buckets: []
+root_mfa: False
+open_sgs: []
+----------------------------------------

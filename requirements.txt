@@ -1,0 +1,7 @@
+Flask==2.3.2
+Flask-SocketIO
+eventlet
+gunicorn
+boto3
+pandas
+reportlab

@@ -1,0 +1,12 @@
+{
+    "checks": {
+        "public_s3": true,
+        "root_mfa": true,
+        "open_security_groups": true
+    },
+    "score_weights": {
+        "public_s3": 20,
+        "root_mfa": 30,
+        "open_security_groups": 10
+    }
+}

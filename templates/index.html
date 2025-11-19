@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cloud Security Audit Tool</title>
+</head>
+<body>
+    <h1>Cloud Security Audit Tool</h1>
+    <button onclick="runScan()">Run Scan</button>
+
+    <h2>Scan Results</h2>
+    <p id="score"></p>
+
+    <h3>Public S3 Buckets</h3>
+    <pre id="buckets"></pre>
+
+    <h3>Root MFA Enabled</h3>
+    <pre id="mfa"></pre>
+
+    <h3>Open Security Groups</h3>
+    <pre id="sg"></pre>
+
+    <a href="/download_csv">Download CSV</a>
+    <a href="/download_pdf">Download PDF</a>
+
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+
+        socket.on("scan_update", (data) => {
+            console.log("STATUS:", data.message);
+        });
+
+        function runScan() {
+            fetch("/scan")
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById("score").innerText =
+                        "Security Score: " + data.security_score + "/100";
+
+                    document.getElementById("buckets").innerText =
+                        data.public_buckets.length ? data.public_buckets : "None";
+
+                    document.getElementById("mfa").innerText = data.mfa_enabled;
+
+                    document.getElementById("sg").innerText =
+                        data.open_security_groups.length ? data.open_security_groups : "None";
+                });
+        }
+    </script>
+</body>
+</html>
