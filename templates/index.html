@@ -1,51 +1,167 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Cloud Security Audit Tool</title>
+  <meta charset="utf-8" />
+  <title>Cloud Security Audit Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <h1>Cloud Security Audit Tool</h1>
-    <button onclick="runScan()">Run Scan</button>
+  <header class="header">
+    <div class="brand">Cloud Security Audit Tool</div>
+    <div class="actions">
+      <button id="scanBtn" class="btn">🚀 Run Cloud Scan</button>
+      <a class="btn ghost" href="/download/csv">Download CSV</a>
+      <a class="btn ghost" href="/download/pdf">Download PDF</a>
+    </div>
+  </header>
 
-    <h2>Scan Results</h2>
-    <p id="score"></p>
+  <main class="container">
+    <section class="card score-card">
+      <h3>Security Score</h3>
+      <div id="scoreValue" class="score">--</div>
+      <canvas id="scoreChart" width="220" height="220"></canvas>
+    </section>
 
-    <h3>Public S3 Buckets</h3>
-    <pre id="buckets"></pre>
+    <section class="card summary-card">
+      <h3>Risk Summary</h3>
+      <ul id="riskList" class="risk-list"></ul>
+      <h3>Scan Progress</h3>
+      <div id="progressLog" class="log"></div>
+    </section>
 
-    <h3>Root MFA Enabled</h3>
-    <pre id="mfa"></pre>
+    <section class="card findings-card">
+      <h3>Findings</h3>
+      <div id="findingsGrid" class="grid"></div>
+    </section>
+  </main>
 
-    <h3>Open Security Groups</h3>
-    <pre id="sg"></pre>
+<script>
+const socket = io();
+const scanBtn = document.getElementById('scanBtn');
+const progressLog = document.getElementById('progressLog');
+const findingsGrid = document.getElementById('findingsGrid');
+const riskList = document.getElementById('riskList');
+const scoreValue = document.getElementById('scoreValue');
+let scoreChart = null;
+let currentScore = 0;
 
-    <a href="/download_csv">Download CSV</a>
-    <a href="/download_pdf">Download PDF</a>
+function appendLog(msg) {
+  const p = document.createElement('div');
+  p.textContent = msg;
+  p.className = 'log-line';
+  progressLog.prepend(p);
+}
 
-    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
-    <script>
-        const socket = io();
+function resetUI() {
+  progressLog.innerHTML = '';
+  findingsGrid.innerHTML = '';
+  riskList.innerHTML = '';
+  scoreValue.innerText = '--';
+  currentScore = 0;
+  if (scoreChart) { scoreChart.destroy(); scoreChart = null; }
+}
 
-        socket.on("scan_update", (data) => {
-            console.log("STATUS:", data.message);
-        });
+scanBtn.onclick = () => {
+  resetUI();
+  appendLog('🔍 Starting scan...');
+  socket.emit('start_scan');
+};
 
-        function runScan() {
-            fetch("/scan")
-                .then(res => res.json())
-                .then(data => {
-                    document.getElementById("score").innerText =
-                        "Security Score: " + data.security_score + "/100";
+// Progress messages
+socket.on('scan_progress', data => {
+  appendLog(data.message);
+  // small incremental score jump for UX
+  if (currentScore < 80) {
+    currentScore += 8;
+    updateScoreChart(Math.round(currentScore));
+  }
+});
 
-                    document.getElementById("buckets").innerText =
-                        data.public_buckets.length ? data.public_buckets : "None";
+// When scan completes
+socket.on('scan_complete', data => {
+  appendLog('✅ Scan complete');
+  const score = data.score || 0;
+  // animate to final score
+  animateFinalScore(score);
+  // populate risk list
+  const details = data.details || {};
+  (details.deductions || []).forEach(d => {
+    const li = document.createElement('li');
+    li.textContent = `${d[0]} (-${d[1]} pts)`;
+    riskList.appendChild(li);
+  });
+  // populate findings grid
+  const results = data.results || {};
+  const items = [];
 
-                    document.getElementById("mfa").innerText = data.mfa_enabled;
+  // S3 findings
+  const s3 = results.s3 || {};
+  items.push({
+    title: 'S3 Public Buckets',
+    value: (s3.public_buckets && s3.public_buckets.length) ? s3.public_buckets.join(', ') : 'None',
+    severity: (s3.public_buckets && s3.public_buckets.length) ? 'high' : 'low'
+  });
+  items.push({
+    title: 'S3 Unencrypted',
+    value: (s3.unencrypted_buckets && s3.unencrypted_buckets.length) ? s3.unencrypted_buckets.join(', ') : 'None',
+    severity: (s3.unencrypted_buckets && s3.unencrypted_buckets.length) ? 'medium' : 'low'
+  });
 
-                    document.getElementById("sg").innerText =
-                        data.open_security_groups.length ? data.open_security_groups : "None";
-                });
-        }
-    </script>
+  // IAM findings
+  const iam = results.iam || {};
+  items.push({ title: 'Root MFA Enabled', value: (iam.root_mfa ? 'True' : 'False'), severity: (iam.root_mfa ? 'low':'high') });
+  items.push({ title: 'Users without MFA', value: (iam.users_no_mfa && iam.users_no_mfa.length) ? iam.users_no_mfa.join(', ') : 'None', severity: (iam.users_no_mfa && iam.users_no_mfa.length)? 'high':'low' });
+  items.push({ title: 'Users old keys', value: (iam.users_old_keys && iam.users_old_keys.length) ? JSON.stringify(iam.users_old_keys) : 'None', severity: (iam.users_old_keys && iam.users_old_keys.length)? 'medium':'low' });
+
+  // Security groups
+  const sgs = results.security_groups || {};
+  items.push({ title: 'Open Security Groups', value: (sgs.open_sgs && sgs.open_sgs.length) ? sgs.open_sgs.map(s=>s.GroupId).join(', ') : 'None', severity: (sgs.open_sgs && sgs.open_sgs.length) ? 'high' : 'low' });
+
+  // Storage
+  const storage = results.storage || {};
+  items.push({ title: 'RDS Unencrypted', value: (storage.rds_unencrypted && storage.rds_unencrypted.length) ? storage.rds_unencrypted.join(', ') : 'None', severity: (storage.rds_unencrypted && storage.rds_unencrypted.length)? 'high':'low' });
+  items.push({ title: 'EBS Unencrypted', value: (storage.ebs_unencrypted && storage.ebs_unencrypted.length) ? storage.ebs_unencrypted.join(', ') : 'None', severity: (storage.ebs_unencrypted && storage.ebs_unencrypted.length)? 'medium':'low' });
+
+  // show items
+  items.forEach(it => {
+    const el = document.createElement('div');
+    el.className = 'finding';
+    el.innerHTML = `<div class="finding-header"><strong>${it.title}</strong><span class="badge ${it.severity}">${it.severity.toUpperCase()}</span></div><div class="finding-value">${it.value}</div>`;
+    findingsGrid.appendChild(el);
+  });
+});
+
+// Score chart helpers
+function updateScoreChart(value) {
+  scoreValue.innerText = `${Math.round(value)}/100`;
+  const ctx = document.getElementById('scoreChart').getContext('2d');
+  if (!scoreChart) {
+    scoreChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: { labels: ['Score','Remaining'], datasets:[{ data:[value,100-value], backgroundColor:['#1e88e5','#e0e0e0'] }] },
+      options: { cutout: '70%', plugins:{legend:{display:false}} }
+    });
+  } else {
+    scoreChart.data.datasets[0].data = [value, 100-value];
+    scoreChart.update();
+  }
+}
+
+function animateFinalScore(target) {
+  const step = Math.max(1, Math.round((target - currentScore)/30));
+  const t = setInterval(()=> {
+    if (currentScore >= target) {
+      currentScore = target;
+      updateScoreChart(currentScore);
+      clearInterval(t);
+    } else {
+      currentScore += step;
+      updateScoreChart(currentScore);
+    }
+  }, 40);
+}
+</script>
 </body>
 </html>
