@@ -1,5 +1,4 @@
-# app.py
-from flask import Flask, render_template, send_file
+from flask import Flask, render_template, send_file, request, redirect, session, url_for
 from flask_socketio import SocketIO, emit
 from utils.aws_checks import run_all_checks
 from utils.scoring import calculate_score_and_details
@@ -7,32 +6,60 @@ from utils.report_generator import generate_csv, generate_pdf
 import os
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
-# use threading for local Windows testing; Render will use eventlet when started with gunicorn -k eventlet
+app.secret_key = "cloud-security-key-123"  # Required for login session
+
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
-# Serve dashboard
+# Dummy login credentials
+USERNAME = "admin"
+PASSWORD = "admin123"
+
+# Login Page
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        
+        if username == USERNAME and password == PASSWORD:
+            session["user"] = username
+            return redirect(url_for("index"))
+        else:
+            return render_template("login.html", error="Invalid credentials")
+    
+    return render_template("login.html")
+
+# Logout
+@app.route("/logout")
+def logout():
+    session.pop("user", None)
+    return redirect(url_for("login"))
+
+# Dashboard (requires login)
 @app.route("/")
 def index():
+    if "user" not in session:
+        return redirect(url_for("login"))
     return render_template("index.html")
 
-# SocketIO event to start scan
 @socketio.on("start_scan")
 def handle_start_scan():
     emit("scan_progress", {"message": "Starting cloud audit..."})
-    # run checks and emit progress messages through a callback
+
     def progress_emit(msg):
         emit("scan_progress", {"message": msg})
 
-    results = run_all_checks(progress_emit=progress_emit)  # simulated checks
+    results = run_all_checks(progress_emit=progress_emit)
     emit("scan_progress", {"message": "Computing score..."})
 
     score, details = calculate_score_and_details(results)
-
     emit("scan_complete", {"score": score, "details": details, "results": results})
 
-# Download CSV/PDF endpoints (run quick scan again for fresh report)
 @app.route("/download/csv")
 def download_csv():
+    if "user" not in session:
+        return redirect(url_for("login"))
+
     results = run_all_checks()
     score, details = calculate_score_and_details(results)
     filename = generate_csv(results, score, details)
@@ -40,6 +67,9 @@ def download_csv():
 
 @app.route("/download/pdf")
 def download_pdf():
+    if "user" not in session:
+        return redirect(url_for("login"))
+
     results = run_all_checks()
     score, details = calculate_score_and_details(results)
     filename = generate_pdf(results, score, details)
